@@ -24,7 +24,9 @@ package fscmd
 
 import (
 	"bytes"
+	"github.com/spf13/cobra"
 	"io"
+	"io/fs"
 	"os"
 	"reflect"
 	"regexp"
@@ -38,7 +40,6 @@ func stdout(f func()) []byte {
 	os.Stdout = w
 
 	f()
-
 
 	outC := make(chan []byte)
 	// copy the output in a separate goroutine so printing can't block indefinitely
@@ -59,6 +60,10 @@ var testFS = &fstest.MapFS{
 	"folder/bar": &fstest.MapFile{Data: []byte("bar")},
 }
 
+func defaultParse(_ *cobra.Command, args []string) (fs.FS, []string, error) {
+	return testFS, args, nil
+}
+
 func Test_cat(t *testing.T) {
 	type args struct {
 		url string
@@ -72,7 +77,7 @@ func Test_cat(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotData := stdout(func() { CatCmd(testFS, nil)(nil, []string{tt.args.url}) })
+			gotData := stdout(func() { CatCmd(defaultParse)(nil, []string{tt.args.url}) })
 
 			re := regexp.MustCompile(`\r?\n`) // TODO: improve newline handling
 			gotDataString := re.ReplaceAllString(string(gotData), "")
@@ -104,7 +109,7 @@ func Test_ls(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotData := stdout(func() { LsCmd(testFS, nil)(nil, []string{tt.args.url}) })
+			gotData := stdout(func() { LsCmd(defaultParse)(nil, []string{tt.args.url}) })
 			if !reflect.DeepEqual(string(gotData), string(tt.wantData)) {
 				t.Errorf("ls() = %s, want %s", gotData, tt.wantData)
 				t.Errorf("ls() = %x, want %x", gotData, tt.wantData)
@@ -126,7 +131,7 @@ func Test_file(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotData := stdout(func() { FileCmd(testFS, nil)(nil, []string{tt.args.url}) })
+			gotData := stdout(func() { FileCmd(defaultParse)(nil, []string{tt.args.url}) })
 			if !reflect.DeepEqual(string(gotData), string(tt.wantData)) {
 				t.Errorf("file() = %s, want %s", gotData, tt.wantData)
 			}
@@ -150,7 +155,7 @@ func Test_hashsum(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotData := stdout(func() { HashsumCmd(testFS, nil)(nil, []string{tt.args.url}) })
+			gotData := stdout(func() { HashsumCmd(defaultParse)(nil, []string{tt.args.url}) })
 			if !reflect.DeepEqual(string(gotData), string(tt.wantData)) {
 				t.Errorf("hashsum() = %s, want %s", gotData, tt.wantData)
 			}
@@ -177,7 +182,7 @@ Modified: 0001-01-01 00:00:00 +0000 UTC
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotData := stdout(func() { StatCmd(testFS, nil)(nil, []string{tt.args.url}) })
+			gotData := stdout(func() { StatCmd(defaultParse)(nil, []string{tt.args.url}) })
 			if !reflect.DeepEqual(string(gotData), string(tt.wantData)) {
 				t.Errorf("stat() = '%s', want '%s'", gotData, tt.wantData)
 			}
@@ -198,7 +203,7 @@ func Test_tree(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotData := stdout(func() { TreeCmd(testFS, nil)(nil, []string{tt.args.url}) })
+			gotData := stdout(func() { TreeCmd(defaultParse)(nil, []string{tt.args.url}) })
 			if !reflect.DeepEqual(string(gotData), string(tt.wantData)) {
 				t.Errorf("tree() = '%s', want '%s'", gotData, tt.wantData)
 				t.Errorf("tree() = '%x', want '%x'", gotData, tt.wantData)

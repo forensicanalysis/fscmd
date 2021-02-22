@@ -7,9 +7,8 @@ on:
     - cron:  '0 0 * * *'
 
 jobs:
-
-  filetype:
-    name: filetype
+  fscmd:
+    name: fscmd
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
