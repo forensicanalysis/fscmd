@@ -100,7 +100,7 @@ esac
 `
 )
 
-func FSCommand(fsys fs.FS, pathMapping func(string) (string, error)) *cobra.Command {
+func FSCommand(parseFunc func(_ *cobra.Command, args []string) (fs.FS, []string, error)) *cobra.Command {
 	var debug bool
 	rootCmd := &cobra.Command{Use: "fs", Short: "recursive file, filesystem and archive commands",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -112,13 +112,13 @@ func FSCommand(fsys fs.FS, pathMapping func(string) (string, error)) *cobra.Comm
 		BashCompletionFunction: bashCompletionFunc,
 	}
 
-	cat := &cobra.Command{Use: "cat", Short: "print files", Run: CatCmd(fsys, pathMapping)}
-	file := &cobra.Command{Use: "file", Short: "determine file type", Run: FileCmd(fsys, pathMapping)}
-	hashsum := &cobra.Command{Use: "hashsum", Short: "print hashsums", Run: HashsumCmd(fsys, pathMapping)}
-	ls := &cobra.Command{Use: "ls", Short: "list directory contents", Run: LsCmd(fsys, pathMapping)}
-	stat := &cobra.Command{Use: "stat", Short: "display file status", Run: StatCmd(fsys, pathMapping)}
-	tree := &cobra.Command{Use: "tree", Short: "list contents of directories in a tree-like format", Run: TreeCmd(fsys, pathMapping)}
-	complete := &cobra.Command{Use: "complete", Run: func(cmd *cobra.Command, args []string) {
+	cat := &cobra.Command{Use: "cat", Short: "print files", Run: CatCmd(parseFunc)}
+	file := &cobra.Command{Use: "file", Short: "determine file type", Run: FileCmd(parseFunc)}
+	hashsum := &cobra.Command{Use: "hashsum", Short: "print hashsums", Run: HashsumCmd(parseFunc)}
+	ls := &cobra.Command{Use: "ls", Short: "list directory contents", Run: LsCmd(parseFunc)}
+	stat := &cobra.Command{Use: "stat", Short: "display file status", Run: StatCmd(parseFunc)}
+	tree := &cobra.Command{Use: "tree", Short: "list contents of directories in a tree-like format", Run: TreeCmd(parseFunc)}
+	complete := &cobra.Command{Use: "complete", Hidden: true, Run: func(cmd *cobra.Command, args []string) {
 		if err := rootCmd.GenBashCompletionFile(".bash_completion.sh"); err == nil {
 			log.Println("--")
 			if _, err := os.Stat("/usr/local/etc/bash_completion.d"); !os.IsNotExist(err) {
@@ -130,16 +130,11 @@ func FSCommand(fsys fs.FS, pathMapping func(string) (string, error)) *cobra.Comm
 			}
 		}
 	}}
-
-	/*
-		go install .
-		fs complete
-		. /usr/local/etc/bash_completion
-		fs ls <tab>
-	*/
+	/* go install . && fs complete && . /usr/local/etc/bash_completion && fs ls <tab> */
 
 	rootCmd.AddCommand(cat, file, hashsum, ls, stat, tree, complete)
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "debug output")
+	rootCmd.PersistentFlags().MarkHidden("debug")
 	return rootCmd
 }
 
@@ -151,16 +146,12 @@ func exitOnError(err error) {
 	}
 }
 
-func CatCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.Command, args []string) {
-	return func(_ *cobra.Command, args []string) {
-		for _, arg := range args {
+func CatCmd(parse func(*cobra.Command, []string) (fs.FS, []string, error)) func(_ *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		fsys, names, err := parse(cmd, args)
+		exitOnError(err)
+		for _, name := range names {
 			func() {
-				name := arg
-				if pathMapping != nil {
-					var err error
-					name, err = pathMapping(name)
-					exitOnError(err)
-				}
 				r, err := fsys.Open(name)
 				exitOnError(err)
 				defer r.Close()
@@ -172,44 +163,35 @@ func CatCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.
 	}
 }
 
-func FileCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.Command, args []string) {
-	return func(_ *cobra.Command, args []string) {
+func FileCmd(parse func(*cobra.Command, []string) (fs.FS, []string, error)) func(_ *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		fsys, names, err := parse(cmd, args)
+		exitOnError(err)
 		b := make([]byte, 8192)
-		for _, arg := range args {
+		for _, name := range names {
 			func() {
-				name := arg
-				if pathMapping != nil {
-					var err error
-					name, err = pathMapping(name)
-					exitOnError(err)
-				}
 				f, err := fsys.Open(name)
 				exitOnError(err)
 				defer f.Close()
 				_, err = f.Read(b)
 				exitOnError(err)
-				// f.Close()
-				fmt.Printf("%s: %s\n", arg, filetype.Detect(b).Mimetype.Value)
+				fmt.Printf("%s: %s\n", name, filetype.Detect(b).Mimetype.Value)
 			}()
 		}
 	}
 }
 
-func HashsumCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.Command, args []string) {
-	return func(_ *cobra.Command, args []string) {
-		for _, arg := range args {
+func HashsumCmd(parse func(*cobra.Command, []string) (fs.FS, []string, error)) func(_ *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		fsys, names, err := parse(cmd, args)
+		exitOnError(err)
+		for _, name := range names {
 			md5hash := md5.New()   // #nosec
 			sha1hash := sha1.New() // #nosec
 			sha256hash := sha256.New()
 			sha512hash := sha512.New()
 			hash := io.MultiWriter(md5hash, sha1hash, sha256hash, sha512hash)
 
-			name := arg
-			if pathMapping != nil {
-				var err error
-				name, err = pathMapping(name)
-				exitOnError(err)
-			}
 			r, err := fsys.Open(name)
 			exitOnError(err)
 			_, err = io.Copy(hash, r)
@@ -223,19 +205,15 @@ func HashsumCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *co
 	}
 }
 
-func LsCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.Command, args []string) {
-	return func(_ *cobra.Command, args []string) {
-		if len(args) == 0 {
-			args = append(args, ".")
-		}
+func LsCmd(parse func(*cobra.Command, []string) (fs.FS, []string, error)) func(_ *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		fsys, names, err := parse(cmd, args)
+		exitOnError(err)
 
-		for _, arg := range args {
-			name := arg
-			if pathMapping != nil {
-				var err error
-				name, err = pathMapping(name)
-				exitOnError(err)
-			}
+		if len(names) == 0 {
+			names = []string{"."}
+		}
+		for _, name := range names {
 			fi, err := fs.Stat(fsys, name)
 			exitOnError(err)
 			if fi.IsDir() {
@@ -255,21 +233,17 @@ func LsCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.C
 					}
 				}
 			} else {
-				fmt.Println(arg)
+				fmt.Println(name)
 			}
 		}
 	}
 }
 
-func StatCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.Command, args []string) {
-	return func(_ *cobra.Command, args []string) {
-		for _, arg := range args {
-			name := arg
-			if pathMapping != nil {
-				var err error
-				name, err = pathMapping(name)
-				exitOnError(err)
-			}
+func StatCmd(parse func(*cobra.Command, []string) (fs.FS, []string, error)) func(_ *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		fsys, names, err := parse(cmd, args)
+		exitOnError(err)
+		for _, name := range names {
 			fi, err := fs.Stat(fsys, name)
 			exitOnError(err)
 			fmt.Printf("Name: %v\n", fi.Name())
@@ -281,17 +255,16 @@ func StatCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra
 	}
 }
 
-func TreeCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra.Command, args []string) {
-	return func(_ *cobra.Command, args []string) {
-		for _, arg := range args {
+func TreeCmd(parse func(*cobra.Command, []string) (fs.FS, []string, error)) func(_ *cobra.Command, args []string) {
+	return func(cmd *cobra.Command, args []string) {
+		fsys, names, err := parse(cmd, args)
+		exitOnError(err)
+		if len(names) == 0 {
+			names = []string{"."}
+		}
+		for _, name := range names {
 			tree := treeprint.New()
-			name := arg
-			if pathMapping != nil {
-				var err error
-				name, err = pathMapping(name)
-				exitOnError(err)
-			}
-			tree.SetValue(arg)
+			tree.SetValue(name)
 			children(fsys, tree, name)
 			fmt.Println(strings.TrimSpace(tree.String()))
 		}
@@ -299,7 +272,6 @@ func TreeCmd(fsys fs.FS, pathMapping func(string) (string, error)) func(_ *cobra
 }
 
 func children(fsys fs.FS, tree treeprint.Tree, name string) {
-	log.Println(fsys, name)
 	fi, err := fs.Stat(fsys, name)
 	exitOnError(err)
 	if fi.IsDir() {
