@@ -134,7 +134,7 @@ func FSCommand(parseFunc func(_ *cobra.Command, args []string) (fs.FS, []string,
 
 	rootCmd.AddCommand(cat, file, hashsum, ls, stat, tree, complete)
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "debug output")
-	rootCmd.PersistentFlags().MarkHidden("debug")
+	_ = rootCmd.PersistentFlags().MarkHidden("debug")
 	return rootCmd
 }
 
