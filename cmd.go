@@ -22,13 +22,14 @@
 
 // Package fscmd implements the fs command line tool that has various subcommands
 // which imitate unix commands but for file system structures.
-//     cat      Print files
-//     file     Determine files types
-//     hashsum  Print hashsums
-//     ls       List directory contents
-//     stat     Display file status
-//     strings  Find the printable strings in an object, or other binary, file
-//     tree     List contents of directories in a tree-like format
+//
+//	cat      Print files
+//	file     Determine files types
+//	hashsum  Print hashsums
+//	ls       List directory contents
+//	stat     Display file status
+//	strings  Find the printable strings in an object, or other binary, file
+//	tree     List contents of directories in a tree-like format
 package fscmd
 
 import (
